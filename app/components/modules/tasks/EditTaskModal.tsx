@@ -16,7 +16,25 @@ const EditTaskSchema = Yup.object().shape({
         .oneOf(["low", "medium", "high"], "Invalid priority")
         .required("Priority is required"),
     completed: Yup.boolean(),
-    attachment: Yup.mixed().nullable(),
+    attachment: Yup.mixed()
+        .nullable()
+        .test("fileType", "Only PDF files are allowed", (value) => {
+            if (!value) return true;
+            return value.type === "application/pdf";
+        })
+        .test("fileSize", "File size must be less than 2MB", async (value) => {
+            if (!value) return true;
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error("Failed to read file"));
+                reader.readAsDataURL(value);
+            });
+            const prefix = "data:application/pdf;base64,";
+            const base64Data = base64.startsWith(prefix) ? base64.slice(prefix.length) : base64;
+            const sizeBytes = (base64Data.length * 3) / 4;
+            return sizeBytes <= 2 * 1024 * 1024; // 2MB
+        }),
 });
 
 
@@ -227,11 +245,11 @@ export default function EditTaskModal({ page, task }: any) {
                                 <div id="editSelectedFileName" className="form-text mt-1">
                                     {fileName || "No file selected"}
                                 </div>
-                                {task?.attachment && !fileName && (
+                                {task?.file_path && !fileName && (
                                     <div className="form-text mt-2">
                                         <span className="badge bg-secondary">
                                             <i className="fa fa-file-earmark-pdf me-1"></i>
-                                            {task.attachment}
+                                            {task.file_path}
                                         </span>
                                     </div>
                                 )}

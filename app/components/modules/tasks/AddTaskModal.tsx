@@ -1,9 +1,10 @@
+// @/app/components/modules/tasks/AddTaskModal.tsx
 "use client";
 
 import { useDispatch } from "react-redux";
 import { useFormik } from "formik";
 import * as Yup from "yup";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AddTaskRequest } from "@/app/services/Task/AddTaskRequest";
 import { TaskRequest } from "@/app/services/Task/TaskRequest";
 import { toast } from "react-toastify";
@@ -16,16 +17,51 @@ const AddTaskSchema = Yup.object().shape({
         .oneOf(["low", "medium", "high"], "Invalid priority")
         .required("Priority is required"),
     completed: Yup.boolean(),
-    attachment: Yup.mixed().nullable(),
+    attachment: Yup.mixed()
+        .nullable()
+        .test("fileType", "Only PDF files are allowed", (value) => {
+            if (!value) return true;
+            return value.type === "application/pdf";
+        })
+        .test("fileSize", "File size must be less than 2MB", async (value) => {
+            if (!value) return true;
+            const base64 = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = () => reject(new Error("Failed to read file"));
+                reader.readAsDataURL(value);
+            });
+            const prefix = "data:application/pdf;base64,";
+            const base64Data = base64.startsWith(prefix) ? base64.slice(prefix.length) : base64;
+            const sizeBytes = (base64Data.length * 3) / 4;
+            return sizeBytes <= 2 * 1024 * 1024; // 2MB
+        }),
 });
 
-interface AddTaskModalProps {
-    page: number;
-}
 
-export default function AddTaskModal({ page }: AddTaskModalProps) {
+export default function AddTaskModal({ page }: any) {
     const dispatch = useDispatch();
+    const modalRef = useRef<HTMLDivElement>(null);
+    const [modalInstance, setModalInstance] = useState<Modal | null>(null);
     const [fileName, setFileName] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (modalRef.current && !modalInstance) {
+            const modal = new Modal(modalRef.current, { backdrop: true });
+            setModalInstance(modal);
+        }
+
+        return () => {
+            if (modalInstance) {
+                modalInstance.hide();
+                modalInstance.dispose();
+                document.body.classList.remove("modal-open");
+                document.body.style.overflow = "";
+                document.body.style.paddingRight = "";
+                document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
+            }
+        };
+    }, [modalInstance]);
 
     const formik = useFormik({
         initialValues: {
@@ -33,55 +69,52 @@ export default function AddTaskModal({ page }: AddTaskModalProps) {
             description: "",
             priority: "low",
             completed: false,
-            //attachment: "",
+            attachment: null,
         },
         validationSchema: AddTaskSchema,
         onSubmit: async (values, { resetForm }) => {
             try {
-                // const formData = new FormData();
-                // formData.append("title", values.title);
-                // if (values.description) formData.append("description", values.description);
-                // formData.append("priority", values.priority);
-                // formData.append("completed", values.completed ? "1" : "0");
-                // if (values.attachment) {
-                //     console.log("Attaching file:", values.attachment.name, values.attachment.type, values.attachment);
-                //     formData.append("attachment", values.attachment);
-                // }
-                //
-                // console.log("FormData entries:");
-                // for (const [key, value] of formData.entries()) {
-                //     console.log(`${key}:`, value);
-                // }
+                let attachmentBase64 = null;
+                if (values.attachment) {
+                    attachmentBase64 = await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.onerror = () => reject(new Error("Failed to read file"));
+                        reader.readAsDataURL(values.attachment);
+                    });
+                }
 
-                const result = await dispatch(AddTaskRequest(values) as any).unwrap();
+                const taskData = {
+                    title: values.title,
+                    description: values.description || "",
+                    priority: values.priority,
+                    completed: values.completed,
+                    attachment: attachmentBase64,
+                };
+
+                console.log("Submitting task:", taskData);
+                const result = await dispatch(AddTaskRequest(taskData) as any).unwrap();
                 toast.success("Task added successfully!");
 
                 await dispatch(TaskRequest({ page }) as any);
 
                 resetForm();
                 setFileName(null);
-                try {
-                    const modalElement = document.getElementById("addTodoModal");
-                    if (modalElement) {
-                        console.log("Closing modal, backdrop count before:", document.querySelectorAll(".modal-backdrop").length);
-                        const modal = Modal.getInstance(modalElement) || new Modal(modalElement);
+
+                if (modalRef.current) {
+                    console.log("Closing modal, backdrop count before:", document.querySelectorAll(".modal-backdrop").length);
+                    const modal = Modal.getInstance(modalRef.current) || modalInstance;
+                    if (modal) {
                         modal.hide();
                         modal.dispose();
-
                         setTimeout(() => {
-                            const backdrops = document.querySelectorAll(".modal-backdrop");
-                            if (backdrops.length > 0) {
-                                console.warn("Residual backdrops found:", backdrops.length);
-                                backdrops.forEach((backdrop) => backdrop.remove());
-                            }
+                            document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
                             document.body.classList.remove("modal-open");
                             document.body.style.overflow = "";
                             document.body.style.paddingRight = "";
                             console.log("Backdrop count after:", document.querySelectorAll(".modal-backdrop").length);
                         }, 300);
                     }
-                } catch (modalError) {
-                    console.warn("Failed to close modal:", modalError);
                 }
             } catch (error: any) {
                 console.error("Failed to add task:", error);
@@ -92,16 +125,30 @@ export default function AddTaskModal({ page }: AddTaskModalProps) {
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0] || null;
+        if (file && file.type !== "application/pdf") {
+            formik.setFieldError("attachment", "Only PDF files are allowed");
+            setFileName(null);
+            formik.setFieldValue("attachment", null);
+            return;
+        }
         formik.setFieldValue("attachment", file);
         setFileName(file ? file.name : null);
+    };
+
+    const handleCancel = () => {
+        if (modalInstance) {
+            modalInstance.hide();
+        }
     };
 
     return (
         <div
             className="modal fade"
             id="addTodoModal"
+            tabIndex={-1}
             aria-labelledby="addTodoModalLabel"
             aria-hidden="true"
+            ref={modalRef}
         >
             <div className="modal-dialog modal-dialog-centered">
                 <div className="modal-content">
@@ -112,12 +159,11 @@ export default function AddTaskModal({ page }: AddTaskModalProps) {
                         <button
                             type="button"
                             className="btn-close"
-                            data-bs-dismiss="modal"
-                            aria-label="Close"
+                            onClick={handleCancel}
                         ></button>
                     </div>
                     <div className="modal-body">
-                        <form onSubmit={formik.handleSubmit} id="addTodoForm" encType="multipart/form-data">
+                        <form onSubmit={formik.handleSubmit} id="addTodoForm">
                             <div className="mb-3">
                                 <label htmlFor="todoTitle" className="form-label">
                                     Title
@@ -236,7 +282,7 @@ export default function AddTaskModal({ page }: AddTaskModalProps) {
                         <button
                             type="button"
                             className="btn btn-secondary"
-                            data-bs-dismiss="modal"
+                            onClick={handleCancel}
                         >
                             Cancel
                         </button>
