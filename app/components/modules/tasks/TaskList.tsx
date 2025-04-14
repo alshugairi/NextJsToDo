@@ -104,7 +104,7 @@ export default function TaskList({ data, loading, error, page }: any) {
                         data?.map((task: any) => (
                             <div
                                 key={task.id}
-                                className={`list-group-item todo-item priority-${task.priority}`}
+                                className={`list-group-item todo-item priority-${task.priority} ${task.completed ? 'completed' : ''}`}
                                 data-id={task.id}
                                 data-priority={task.priority}
                                 data-date={task.created_at}
