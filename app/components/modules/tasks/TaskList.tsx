@@ -1,20 +1,48 @@
 "use client";
 
 import { useDispatch, useSelector } from "react-redux";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DeleteTaskRequest } from "@/app/services/Task/DeleteTaskRequest";
 import { TaskRequest } from "@/app/services/Task/TaskRequest";
 import { toast } from "react-toastify";
-import {Modal} from "bootstrap";
-import ReactPagination from "@/app/components/lib/Pagination/ReactPagination";
+import { Modal } from "bootstrap";
+import EditTaskModal from "./EditTaskModal";
 
 export default function TaskList({ data, loading, error, page }: any) {
     const dispatch = useDispatch();
+    const deleteModalRef = useRef<HTMLDivElement>(null);
+    const [deleteModalInstance, setDeleteModalInstance] = useState<Modal | null>(null);
     const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
+    const [taskToEdit, setTaskToEdit] = useState<any | null>(null);
     const { delete_task } = useSelector((state: any) => state.task);
+
+    useEffect(() => {
+        if (deleteModalRef.current && !deleteModalInstance) {
+            const modal = new Modal(deleteModalRef.current, { backdrop: true });
+            setDeleteModalInstance(modal);
+        }
+
+        return () => {
+            if (deleteModalInstance) {
+                deleteModalInstance.hide();
+                deleteModalInstance.dispose();
+                document.body.classList.remove("modal-open");
+                document.body.style.overflow = "";
+                document.body.style.paddingRight = "";
+                document.querySelectorAll(".modal-backdrop").forEach((el) => el.remove());
+            }
+        };
+    }, [deleteModalInstance]);
 
     const handleDeleteClick = (taskId: string) => {
         setTaskToDelete(taskId);
+        if (deleteModalInstance) {
+            deleteModalInstance.show();
+        }
+    };
+
+    const handleEditClick = (task: any) => {
+        setTaskToEdit(task);
     };
 
     const handleConfirmDelete = async () => {
@@ -31,30 +59,16 @@ export default function TaskList({ data, loading, error, page }: any) {
             );
         } finally {
             setTaskToDelete(null);
-
-            try {
-                const modalElement = document.getElementById("deleteTodoModal");
-                if (modalElement) {
-                    console.log("Closing modal, backdrop count before:", document.querySelectorAll(".modal-backdrop").length);
-                    const modal = Modal.getInstance(modalElement) || new Modal(modalElement);
-                    modal.hide();
-                    modal.dispose();
-
-                    setTimeout(() => {
-                        const backdrops = document.querySelectorAll(".modal-backdrop");
-                        if (backdrops.length > 0) {
-                            console.warn("Residual backdrops found:", backdrops.length);
-                            backdrops.forEach((backdrop) => backdrop.remove());
-                        }
-                        document.body.classList.remove("modal-open");
-                        document.body.style.overflow = "";
-                        document.body.style.paddingRight = "";
-                        console.log("Backdrop count after:", document.querySelectorAll(".modal-backdrop").length);
-                    }, 300);
-                }
-            } catch (modalError) {
-                console.warn("Failed to close modal:", modalError);
+            if (deleteModalInstance) {
+                deleteModalInstance.hide();
             }
+        }
+    };
+
+    const handleDeleteCancel = () => {
+        setTaskToDelete(null);
+        if (deleteModalInstance) {
+            deleteModalInstance.hide();
         }
     };
 
@@ -172,15 +186,12 @@ export default function TaskList({ data, loading, error, page }: any) {
                                         </div>
                                         <button
                                             className="btn btn-sm btn-outline-secondary btn-edit"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#editTodoModal"
+                                            onClick={() => handleEditClick(task)}
                                         >
                                             <i className="fa fa-pencil"></i>
                                         </button>
                                         <button
                                             className="btn btn-sm btn-outline-danger btn-delete"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#deleteTodoModal"
                                             onClick={() => handleDeleteClick(task.id)}
                                         >
                                             <i className="fa fa-trash"></i>
@@ -216,13 +227,14 @@ export default function TaskList({ data, loading, error, page }: any) {
                     </div>
                 </div>
             </div>
-
+            {taskToEdit && <EditTaskModal page={page} task={taskToEdit} />}
             <div
                 className="modal fade"
                 id="deleteTodoModal"
                 tabIndex={-1}
                 aria-labelledby="deleteTodoModalLabel"
                 aria-hidden="true"
+                ref={deleteModalRef}
             >
                 <div className="modal-dialog modal-sm modal-dialog-centered">
                     <div className="modal-content">
@@ -233,8 +245,8 @@ export default function TaskList({ data, loading, error, page }: any) {
                             <button
                                 type="button"
                                 className="btn-close"
-                                data-bs-dismiss="modal"
                                 aria-label="Close"
+                                onClick={handleDeleteCancel}
                             ></button>
                         </div>
                         <div className="modal-body">
@@ -244,7 +256,7 @@ export default function TaskList({ data, loading, error, page }: any) {
                             <button
                                 type="button"
                                 className="btn btn-secondary"
-                                data-bs-dismiss="modal"
+                                onClick={handleDeleteCancel}
                             >
                                 Cancel
                             </button>

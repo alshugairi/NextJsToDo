@@ -19,6 +19,10 @@ interface todoStates {
         error: null,
         data:null
     },
+    edit_task: {
+        loading: false,
+        error: null,
+    },
     pagination: {}
 }
 
@@ -37,6 +41,10 @@ const initialState: todoStates = {
         loading: false,
         error: null,
         data:null
+    },
+    edit_task: {
+        loading: false,
+        error: null,
     },
     pagination: {}
 };
